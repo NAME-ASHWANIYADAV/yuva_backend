@@ -1,0 +1,17 @@
+{
+  "n": 1000,
+  "seed": 7,
+  "shards": 8,
+  "status_counts": {
+    "CERTIFIED": 504,
+    "CERTIFIED_WITH_RELAXATION": 256,
+    "INFEASIBLE": 228,
+    "FALLBACK_BASELINE": 12
+  },
+  "certified_plans_with_violations": 0,
+  "worst": [],
+  "median_solve_s": 1.955,
+  "p90_solve_s": 23.36,
+  "elapsed_s": 3366.386751651764,
+  "cpu_s_total": 24914.88910150528
+}

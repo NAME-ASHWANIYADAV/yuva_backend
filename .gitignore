@@ -7,17 +7,13 @@ build/
 dist/
 frontend/node_modules/
 frontend/dist/
+# cached public weather/forecast data, the trained forecast model and the measured results are committed on purpose:
+# a fresh clone demos offline without re-downloading (Open-Meteo CC BY 4.0, NASA POWER public domain; see DATA_SOURCES.md)
 data/raw/*.parquet
-data/raw/*.csv
-data/raw/*.json
 data/processed/*.parquet
-data/processed/*.csv
-models/*.txt
-models/*.json
-results/**/*.png
-results/**/*.csv
-results/**/*.json
-!results/**/SUMMARY.md
+results/**/runs.csv
+results/safety/sweep_part*.json
+results/safety/shard*.log
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !models/.gitkeep
