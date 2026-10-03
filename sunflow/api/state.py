@@ -100,6 +100,8 @@ class DemoState:
             t0 = time.time()
             r = plan_day(self.cfg, self.weights, self.day, scenario=copy.deepcopy(self.scenario))
             self.current = result_to_dict(r)
+            # the band inside the scenario is the one chosen at reset (learned model when available); keep its label
+            self.current["forecast_source"] = (self.base_result or {}).get("forecast_source", self.current["forecast_source"])                 if (self.current.get("scenario_kind") in (None, "base")) else self.current["forecast_source"]
             self.announced_plan = plan_copy(r.certified.plan)
             self.max_spells_allowed = int(getattr(r.certified, 'max_spells_allowed', 1))
             self.log.append(self._entry("certify", r.certified.status, t0, r.certified.status))
