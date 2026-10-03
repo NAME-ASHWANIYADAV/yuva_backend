@@ -1,0 +1,12 @@
+# Objective weights for the SUNFLOW scheduler. All configurable; units are rupees where possible.
+import_inr_per_kwh: 4.5          # grid import priced at APPC (non-solar-hour import is what the plan minimises)
+surplus_inr_per_kwh: 2.0         # solar produced but not used on the feeder (APPC minus export value)
+ageing_inr_per_deg_block: 2.0    # penalty per degree-block that a DT hot-spot sits above the ageing reference (98 C)
+switching_inr_per_event: 200.0   # cost of one feeder switching operation (operator effort, breaker wear)
+deviation_inr_per_block: 60.0    # cost of changing one announced block (plan stability)
+urgency_inr_per_block: 15.0      # cost per block of start delay, scaled by irrigation urgency (0-1)
+fairness_inr_per_block: 8.0      # cost per block away from the feeder's rotating preferred start
+night_comp_inr_per_block: 2000.0 # heavy penalty for invoking the circular's night-compensation clause (last resort; energy cost added on top)
+thermal_margin_c: 4.0            # optimiser keeps hot-spot below limit minus this margin (verifier uses the full limit)
+solar_quantile_for_import: "p10" # robust: import computed against the pessimistic solar band
+solar_quantile_for_surplus: "p50"
