@@ -11,5 +11,5 @@ import uvicorn  # noqa: E402
 
 if __name__ == "__main__":
     host = os.environ.get("SUNFLOW_HOST", "127.0.0.1")
-    port = int(os.environ.get("SUNFLOW_PORT", "8000"))
+    port = int(os.environ.get("PORT") or os.environ.get("SUNFLOW_PORT", "8000"))   # PORT: Render/Railway/Heroku convention
     uvicorn.run("sunflow.api.app:app", host=host, port=port, reload=False, log_level="info")

@@ -1,10 +1,11 @@
 frontend/node_modules
 frontend/dist
-data/raw
-data/processed
-models
-results
+data/raw/*.parquet
+data/processed/*.parquet
+results/safety/shard*.log
+results/safety/sweep_part*.json
 .pytest_cache
 __pycache__
 .env
+.git
 docs
