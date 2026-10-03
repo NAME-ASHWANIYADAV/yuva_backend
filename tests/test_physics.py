@@ -98,3 +98,18 @@ def test_soil_bucket_and_conversion(cfg):
     assert abs(blocks_to_mm(blocks, 16.0, 10, 25.0, 0.6) - 30.0) < 1e-9
     b.apply_irrigation(1000)
     assert b.depletion_mm == 0.0
+
+
+def test_hourly_to_blocks_is_independent_of_datetime_storage_unit(cfg):
+    """pandas 3 stores datetimes at second/microsecond resolution; interpolation must not depend on the unit."""
+    import numpy as np
+    import pandas as pd
+    from sunflow.physics.pv import hourly_to_blocks
+    hours = pd.date_range("2025-10-20", periods=24, freq="h", tz=cfg.site.timezone)
+    ghi = np.array([0, 0, 0, 0, 0, 0, 20, 150, 320, 480, 560, 300, 120, 90, 260, 380, 300, 160, 40, 0, 0, 0, 0, 0], dtype=float)
+    temp = np.linspace(20, 30, 24)
+    _, g_ns, t_ns = hourly_to_blocks(hours.as_unit("ns"), ghi, temp, cfg.site)
+    _, g_s, t_s = hourly_to_blocks(hours.as_unit("s"), ghi, temp, cfg.site)
+    assert np.allclose(g_ns, g_s) and np.allclose(t_ns, t_s)
+    # the midday cloud dip (hours 11-13) must survive interpolation
+    assert g_ns[13 * 4] < 0.5 * g_ns[10 * 4]

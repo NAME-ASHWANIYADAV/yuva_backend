@@ -1,5 +1,5 @@
 numpy>=1.26
-pandas>=2.1
+pandas>=2.1,<3   # developed, trained and tested on pandas 2.x; pandas 3 changes datetime storage units and string dtypes
 scipy>=1.11
 pyyaml>=6.0
 pydantic>=2.5

@@ -58,6 +58,12 @@ def plant_power_mw(times: pd.DatetimeIndex, ghi: np.ndarray, temp_air: np.ndarra
     return pac / 1e6
 
 
+def _epoch_ns(times: pd.DatetimeIndex) -> np.ndarray:
+    """Integer nanoseconds since the epoch, independent of the index's storage unit. pandas 3 stores parsed or
+    constructed datetimes at second/microsecond resolution, so a bare astype("int64") mixes units between indexes."""
+    return np.asarray(pd.DatetimeIndex(times).as_unit("ns").asi8, dtype=np.int64)
+
+
 def hourly_to_blocks(hour_times: pd.DatetimeIndex, hourly_ghi: np.ndarray, hourly_temp: np.ndarray,
                      site: SiteConfig, grid: TimeGrid = TimeGrid()) -> Tuple[pd.DatetimeIndex, np.ndarray, np.ndarray]:
     """Interpolate hourly GHI/temperature to 15-minute blocks for ONE day using the clear-sky index.
@@ -74,10 +80,10 @@ def hourly_to_blocks(hour_times: pd.DatetimeIndex, hourly_ghi: np.ndarray, hourl
     ghi_h = np.clip(np.nan_to_num(np.asarray(hourly_ghi, dtype=float)), 0, None)
     kt_h = np.where(cs_h > 10.0, ghi_h / np.maximum(cs_h, 1e-6), np.nan)
     kt_series = pd.Series(kt_h, index=centred).interpolate(method="time", limit_direction="both")
-    kt_b = np.interp(block_times.astype("int64"), centred.astype("int64"), kt_series.values)
+    kt_b = np.interp(_epoch_ns(block_times), _epoch_ns(centred), kt_series.values)
     kt_b = np.clip(np.nan_to_num(kt_b, nan=0.0), 0.0, 1.2)
     ghi_b = np.where(cs_b > 10.0, kt_b * cs_b, 0.0)
-    temp_b = np.interp(block_times.astype("int64"), hour_times.astype("int64"), np.nan_to_num(np.asarray(hourly_temp, dtype=float), nan=25.0))
+    temp_b = np.interp(_epoch_ns(block_times), _epoch_ns(hour_times), np.nan_to_num(np.asarray(hourly_temp, dtype=float), nan=25.0))
     return block_times, ghi_b, temp_b
 
 
