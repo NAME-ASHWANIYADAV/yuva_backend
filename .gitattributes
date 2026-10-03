@@ -1,4 +1,6 @@
 * text=auto
+models/*.txt -text
+*.csv text eol=lf
 *.png binary
 *.woff2 binary
 *.parquet binary
