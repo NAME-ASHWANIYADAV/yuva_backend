@@ -69,12 +69,13 @@ class VerifyReport:
 
 def verify(plan: Plan, scenario: Scenario, cfg: SunflowConfig, settings: Optional[VerifySettings] = None,
            night_comp: Optional[Dict[str, float]] = None, irrigation_deferred: bool = False,
-           grid: TimeGrid = TimeGrid()) -> VerifyReport:
+           max_spells: Optional[int] = None, grid: TimeGrid = TimeGrid()) -> VerifyReport:
     st = settings or VerifySettings.from_config(cfg)
     limit = st.hot_spot_limit_c if st.hot_spot_limit_c is not None else cfg.thermal.hot_spot_limit_c
     night_comp = night_comp or {}
     viol: List[Violation] = []
     rules = cfg.rules
+    allowed_spells = int(max_spells) if max_spells is not None else rules.max_spells
     w0, w1 = grid.block_of(rules.window_start), grid.block_of(rules.window_end)
 
     # 0: sanitise (malformed feeders are reported and treated as 'never energised' for the physical checks)
@@ -112,8 +113,8 @@ def verify(plan: Plan, scenario: Scenario, cfg: SunflowConfig, settings: Optiona
         if on + nc < rules.min_blocks_per_feeder - 1e-6:
             viol.append(Violation("supply_hours", f.name, None, on, rules.min_blocks_per_feeder, "fewer than 8 h incl. night compensation"))
         spells = plan_spells(u)
-        if len(spells) > rules.max_spells:
-            viol.append(Violation("too_many_spells", f.name, None, len(spells), rules.max_spells))
+        if len(spells) > allowed_spells:
+            viol.append(Violation("too_many_spells", f.name, None, len(spells), allowed_spells))
         for (a, b) in spells:
             if b - a < min(rules.min_spell_blocks, rules.min_blocks_per_feeder) and len(spells) > 1:
                 viol.append(Violation("short_spell", f.name, a, b - a, rules.min_spell_blocks))
@@ -140,7 +141,7 @@ def verify(plan: Plan, scenario: Scenario, cfg: SunflowConfig, settings: Optiona
 
     # 4-7: physical rules under pessimistic settings
     sim = simulate(plan, scenario, cfg, participation=st.participation, thermal_factor=st.thermal_factor,
-                   ambient_offset_c=st.ambient_offset_c, solar_quantile=st.solar_quantile, grid=grid)
+                   ambient_offset_c=st.ambient_offset_c, solar_quantile=st.solar_quantile, grid=grid, night_comp=night_comp)
     for p, kva in sim.pt_kva.items():
         over = np.where(kva > sim.pt_rating_kva[p] + 1e-6)[0]
         if over.size:

@@ -43,10 +43,20 @@ def describe_binding(binding: Dict[str, list], grid: TimeGrid = TimeGrid()) -> L
             by_pt.setdefault(x["pt"], []).append(x["block"])
         for p, blocks in by_pt.items():
             out.append(f"{p} is at its 5 MVA rating in {len(blocks)} block(s), first at {grid.label(min(blocks))}: the start order of its feeders is fixed by this limit.")
+    seen_feeder = set()
     for x in binding.get("thermal", []):
-        if x.get("binding"):
+        if not x.get("binding"):
+            continue
+        if x.get("thermal_dropped", 0) > 0 and x["feeder"] not in seen_feeder:
+            seen_feeder.add(x["feeder"])
+            longest = x.get("longest_single_spell_blocks", 0)
+            out.append(f"{x['feeder']}: {x['thermal_dropped']} of {x['candidates']} candidate daily schedules were excluded because its "
+                       f"{int(x['rating_kva'])} kVA transformers would pass {x['limit_c']:.0f} C (planning limit incl. margin)"
+                       + (f"; the longest admissible single spell today is {longest / 4:.2g} h" if longest else "; no single spell is admissible today")
+                       + f". Chosen schedule peaks at {x['max_hot_spot_c']:.1f} C at {grid.label(x['block'])}.")
+        elif x.get("thermal_dropped", 0) == 0:
             out.append(f"{x['n_dts']} x {int(x['rating_kva'])} kVA transformers on {x['feeder']} reach {x['max_hot_spot_c']:.1f} C at {grid.label(x['block'])}, "
-                       f"the planning limit ({x['limit_c']:.0f} C incl. margin): their spell cannot sit later in the afternoon.")
+                       f"within 0.5 C of the planning limit ({x['limit_c']:.0f} C incl. margin): their spell cannot sit later in the afternoon.")
     caps = binding.get("cap", [])
     if caps:
         out.append(f"The switching cap binds at {grid.label(caps[0]['block'])}: two feeders cannot be switched in the same block.")
@@ -102,7 +112,11 @@ def explain_request(cfg: SunflowConfig, weights: Weights, scenario: Scenario, fe
                     grid: TimeGrid = TimeGrid(), search_radius: int = 12) -> Decision:
     """Can feeder `feeder` start at `start_block`? Answer with solver facts, the blocking rules and the nearest feasible start."""
     options = options or SolveOptions()
-    options = replace(options, time_limit_s=min(options.time_limit_s, 15.0))
+    # single-spell contrastive solves are sub-second; split-spell ones get a short limit (the heuristic start keeps
+    # them feasible) so a request with up to a dozen candidate alternatives still answers within about a minute
+    split = (options.max_spells or 1) > 1
+    options = replace(options, time_limit_s=min(options.time_limit_s, 4.0 if split else 15.0), mip_gap=max(options.mip_gap, 0.05 if split else 0.005))
+    max_candidates = 6 if split else 40
     settings = settings or VerifySettings.from_config(cfg)
     label = grid.label(start_block)
     rules = cfg.rules
@@ -119,7 +133,7 @@ def explain_request(cfg: SunflowConfig, weights: Weights, scenario: Scenario, fe
                       f"{rules.window_end}, even with the {rules.max_night_compensation_blocks // 4} h night-compensation cap")
     res = _solve_with_forced_start(cfg, weights, scenario, feeder, start_block, options) if structural is None else None
     if res is not None and res.plan is not None:
-        rep = verify(res.plan, scenario, cfg, settings, night_comp=res.night_comp)
+        rep = verify(res.plan, scenario, cfg, settings, night_comp=res.night_comp, max_spells=options.max_spells)
         if rep.ok:
             base = solve_plan(build_inputs(cfg, scenario, weights, options))
             delta = (res.objective - base.objective) if (base.objective is not None and res.objective is not None) else None
@@ -151,11 +165,15 @@ def explain_request(cfg: SunflowConfig, weights: Weights, scenario: Scenario, fe
         reason = f"Refused: {feeder} cannot start at {label} because {why}."
     # nearest feasible alternative among structurally possible starts, searched outward from the request
     alt, alt_plan = None, None
+    tried = 0
     for cand in sorted(feasible_starts, key=lambda t: (abs(t - start_block), t)):
         if cand == start_block:
             continue
+        if tried >= max_candidates:
+            break
+        tried += 1
         r = _solve_with_forced_start(cfg, weights, scenario, feeder, cand, options)
-        if r.plan is not None and verify(r.plan, scenario, cfg, settings, night_comp=r.night_comp).ok:
+        if r.plan is not None and verify(r.plan, scenario, cfg, settings, night_comp=r.night_comp, max_spells=options.max_spells).ok:
             alt, alt_plan = cand, r.plan
             break
     if alt is not None:

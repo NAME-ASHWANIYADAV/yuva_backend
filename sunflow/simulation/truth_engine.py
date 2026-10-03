@@ -18,10 +18,20 @@ from .types import Plan, Scenario, SimResult, plan_starts
 
 def simulate(plan: Plan, scenario: Scenario, cfg: SunflowConfig, participation: Optional[float] = None,
              thermal_factor: Optional[float] = None, ambient_offset_c: Optional[float] = None,
-             solar_quantile: str = "p50", grid: TimeGrid = TimeGrid()) -> SimResult:
+             solar_quantile: str = "p50", grid: TimeGrid = TimeGrid(),
+             night_comp: Optional[Dict[str, float]] = None) -> SimResult:
+    """Replay a plan. `night_comp` (feeder -> blocks supplied at night under the circular's clause 3) is grid energy
+    with zero solar content; it is added to the import metrics so a plan cannot look cheaper by moving hours to night."""
     fm = FeederModel(cfg, scenario.failed_dts)
     # scenario perturbations (heat wave, degraded DTs) compound with the caller's pessimistic settings
-    part = participation if participation is not None else (scenario.participation if scenario.participation is not None else cfg.participation.default)
+    # participation: a scenario that declares a higher participation (e.g. 'everyone switches on') is never softened by
+    # the caller's pessimistic default; the more pessimistic of the two applies
+    if participation is not None and scenario.participation is not None:
+        part = max(float(participation), float(scenario.participation))
+    elif participation is not None:
+        part = float(participation)
+    else:
+        part = float(scenario.participation if scenario.participation is not None else cfg.participation.default)
     tf = scenario.thermal_factor * (thermal_factor if thermal_factor is not None else 1.0)
     amb_off = scenario.ambient_offset_c + (ambient_offset_c if ambient_offset_c is not None else 0.0)
     params = ThermalParams.from_config(cfg.thermal).scaled(tf)
@@ -110,9 +120,13 @@ def simulate(plan: Plan, scenario: Scenario, cfg: SunflowConfig, participation: 
             "irrigated_ha": fm.irrigated_ha(f.name),
         }
 
-    load_kwh = float(load_kw.sum() * dt_h)
-    import_kwh = float(import_kw.sum() * dt_h)
-    import_nonsolar_kwh = float(import_kw[~solar_hour].sum() * dt_h)
+    night_comp_kwh = 0.0
+    for fn, nb in (night_comp or {}).items():
+        if nb and nb > 0 and fn in feeder_kva:
+            night_comp_kwh += float(nb) * fm.feeder_installed_kva(fn) * part * pf * dt_h
+    load_kwh = float(load_kw.sum() * dt_h) + night_comp_kwh
+    import_kwh = float(import_kw.sum() * dt_h) + night_comp_kwh
+    import_nonsolar_kwh = float(import_kw[~solar_hour].sum() * dt_h) + night_comp_kwh
     surplus_kwh = float(surplus_kw.sum() * dt_h)
     pv_kwh = float(pv_kw.sum() * dt_h)
     solar_used_kwh = float(np.minimum(load_kw, pv_kw).sum() * dt_h)
@@ -124,6 +138,7 @@ def simulate(plan: Plan, scenario: Scenario, cfg: SunflowConfig, participation: 
         "pv_kwh": pv_kwh,
         "import_kwh": import_kwh,
         "import_nonsolar_kwh": import_nonsolar_kwh,
+        "night_comp_kwh": night_comp_kwh,
         "surplus_kwh": surplus_kwh,
         "solar_used_kwh": solar_used_kwh,
         "solar_used_frac_of_pv": (solar_used_kwh / pv_kwh) if pv_kwh > 0 else 0.0,
@@ -144,7 +159,11 @@ def simulate(plan: Plan, scenario: Scenario, cfg: SunflowConfig, participation: 
         "participation": float(part),
         "thermal_factor": float(tf),
         "ambient_offset_c": float(amb_off),
+        "unserved_kva_due_to_dt_failure": float(sum(fm.unserved_kva.values())),
+        "unserved_pumps_due_to_dt_failure": int(sum(x["unserved_pumps"] for x in fm.retap_log)),
     }
+    for x in fm.retap_log:
+        violations.append({"kind": "dt_failed_retap", **x})
     return SimResult(
         plan={f: effective_plan[f] for f in effective_plan},
         blocks=[grid.label(t) for t in range(N)], pv_mw=pv_mw, load_kw=load_kw, import_kw=import_kw,

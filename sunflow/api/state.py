@@ -13,6 +13,7 @@ import numpy as np
 from ..core.config import SunflowConfig, Weights, load_config, load_weights
 from ..core.logging import get_logger
 from ..core.timegrid import TimeGrid
+from ..optimization.inputs import SolveOptions
 from ..planning import plan_day, result_to_dict, replan, explain_request
 from ..scenarios import apply_scenario
 from ..simulation import Scenario, scenario_from_era5_day
@@ -33,6 +34,7 @@ class DemoState:
     current: Optional[dict] = None
     announced_plan: Optional[dict] = None
     now_block: int = 0
+    max_spells_allowed: int = 1          # spells the current certified plan was allowed (farmer requests reuse it)
     log: List[dict] = field(default_factory=list)
     cache: Dict[str, dict] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -65,7 +67,10 @@ class DemoState:
     # ------------------------------------------------------------------ core actions
     def reset(self, day: Optional[date] = None) -> dict:
         with self.lock:
-            self.day = day or self.day
+            new_day = day or self.day
+            if new_day != self.day:
+                self.cache = {}           # precomputed scenarios belong to one operating day
+            self.day = new_day
             t0 = time.time()
             r = plan_day(self.cfg, self.weights, self.day)
             self.base_scenario = r.scenario
@@ -73,8 +78,8 @@ class DemoState:
             self.base_result = result_to_dict(r)
             self.current = self.base_result
             self.announced_plan = plan_copy(r.certified.plan)
+            self.max_spells_allowed = int(getattr(r.certified, 'max_spells_allowed', 1))
             self.now_block = 0
-            self.cache = {}
             self.log = [self._entry("reset", f"day {self.day.isoformat()} planned", t0, r.certified.status)]
             return self.current
 
@@ -96,6 +101,7 @@ class DemoState:
             r = plan_day(self.cfg, self.weights, self.day, scenario=copy.deepcopy(self.scenario))
             self.current = result_to_dict(r)
             self.announced_plan = plan_copy(r.certified.plan)
+            self.max_spells_allowed = int(getattr(r.certified, 'max_spells_allowed', 1))
             self.log.append(self._entry("certify", r.certified.status, t0, r.certified.status))
             return self.current
 
@@ -108,6 +114,7 @@ class DemoState:
             self.log.append(self._entry(kind, f"cached (computed in {cached.get('compute_seconds', '?')} s)", time.time(), cached["certified"]["status"]))
             self.current = cached
             self.scenario = apply_scenario(self.cfg, self.base_scenario, kind, **params)
+            self.max_spells_allowed = int(cached.get("max_spells_allowed", 1))
             return self.current
         with self.lock:
             t0 = time.time()
@@ -128,8 +135,10 @@ class DemoState:
             out["scenario_params"] = params
             out["forecast_source"] = self.base_result["forecast_source"] + (" · rescaled to the scenario's solar day" if kind == "cloud_ramp" else "")
             out["compute_seconds"] = round(time.time() - t0, 1)
+            out["max_spells_allowed"] = int(getattr(r.certified, "max_spells_allowed", 1))
             self.scenario = sc
             self.current = out
+            self.max_spells_allowed = out["max_spells_allowed"]
             self.cache[key] = out
             self.log.append(self._entry(kind, str(params), t0, r.certified.status))
             return out
@@ -139,7 +148,8 @@ class DemoState:
         with self.lock:
             t0 = time.time()
             sc = copy.deepcopy(self.scenario)
-            d = explain_request(self.cfg, self.weights, sc, feeder, self.grid.block_of(start))
+            opts = SolveOptions(max_spells=self.max_spells_allowed) if self.max_spells_allowed > 1 else None
+            d = explain_request(self.cfg, self.weights, sc, feeder, self.grid.block_of(start), options=opts)
             out = {"feeder": d.feeder, "requested": d.requested_label, "accepted": d.accepted, "reason": d.reason,
                    "marathi": d.marathi, "blocking_families": d.blocking_families, "facts": d.facts,
                    "alternative": d.alternative_label, "cost_delta_inr": d.cost_delta_inr,

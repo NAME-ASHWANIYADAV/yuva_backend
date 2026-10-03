@@ -77,7 +77,7 @@ def run_experiments(cfg: SunflowConfig, weights: Weights, n_days: int = 24, scen
             for vname, vopts in variants.items():
                 opts = replace(vopts, time_limit_s=time_limit_s)
                 cert = certify(cfg, sc, weights, opts, settings, baseline=bl)
-                psim = simulate(cert.plan, sc, cfg)
+                psim = simulate(cert.plan, sc, cfg, night_comp=cert.night_comp)
                 rows.append({"day": day.isoformat(), "scenario_seed": sc_seed, "variant": vname, "status": cert.status,
                              "certified": cert.certified, "verify_ok": bool(cert.report.ok) if cert.report else None,
                              "verify_violations": len(cert.report.violations) if cert.report else None,

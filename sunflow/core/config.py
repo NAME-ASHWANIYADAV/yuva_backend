@@ -55,7 +55,11 @@ class FeederConfig(BaseModel):
     n_dts: int
     dt_kva_pattern: List[float]
     crop_group: str
+    rabi_crop_group: Optional[str] = None     # second-season crop on the same land (rotation); None = fallow in rabi
     dts: List[DTConfig] = Field(default_factory=list)
+
+    def crop_groups(self) -> List[str]:
+        return [g for g in (self.crop_group, self.rabi_crop_group) if g]
 
     @property
     def installed_kva(self) -> float:
@@ -177,8 +181,9 @@ class SunflowConfig(BaseModel):
         for f in self.feeders:
             if f.pt not in pt_names:
                 raise ValueError(f"feeder {f.name} references unknown PT {f.pt}")
-            if f.crop_group not in self.crops:
-                raise ValueError(f"feeder {f.name} references unknown crop group {f.crop_group}")
+            for g in f.crop_groups():
+                if g not in self.crops:
+                    raise ValueError(f"feeder {f.name} references unknown crop group {g}")
             if not f.dts:
                 dts = []
                 for i in range(f.n_dts):

@@ -47,9 +47,9 @@ export default function ExplainPanel({ current, decision, compact }) {
             <>
               <h4 style={{ marginTop: 12 }}>Binding constraints (solver facts)</h4>
               <div className="kv">PT at rating: {c.solve.binding.pt?.length || 0} block(s) · switching cap binding: {c.solve.binding.cap?.length || 0} block(s)</div>
-              <table className="ladder"><thead><tr><th>thermal class</th><th>DTs</th><th>max hot-spot (planning band)</th><th>at</th><th>limit incl. margin</th><th>binding</th></tr></thead>
-                <tbody>{(c.solve.binding.thermal || []).map((x, i) => <tr key={i}><td>{x.feeder} {x.rating_kva} kVA</td><td>{x.n_dts}</td><td>{x.max_hot_spot_c}</td><td>{String(Math.floor((x.block * 15) / 60)).padStart(2, '0')}:{String((x.block * 15) % 60).padStart(2, '0')}</td><td>{x.limit_c}</td><td>{x.binding ? 'yes' : 'no'}</td></tr>)}</tbody></table>
-              <div className="kv">Model size: {c.solve.model_size?.binaries} binaries, {c.solve.model_size?.constraints} constraints · objective ₹{c.solve.objective?.toFixed?.(0)}</div>
+              <table className="ladder"><thead><tr><th>thermal class</th><th>DTs</th><th>max hot-spot (planning band)</th><th>at</th><th>limit incl. margin</th><th>schedules excluded by heat</th><th>binding</th></tr></thead>
+                <tbody>{(c.solve.binding.thermal || []).map((x, i) => <tr key={i}><td>{x.feeder} {x.rating_kva} kVA</td><td>{x.n_dts}</td><td>{x.max_hot_spot_c}</td><td>{String(Math.floor((x.block * 15) / 60)).padStart(2, '0')}:{String((x.block * 15) % 60).padStart(2, '0')}</td><td>{x.limit_c}</td><td>{x.thermal_dropped ?? 0} / {x.candidates ?? 0}</td><td>{x.binding ? 'yes' : 'no'}</td></tr>)}</tbody></table>
+              <div className="kv">Model: {c.solve.model_size?.binaries} admissible daily patterns (binaries), {c.solve.model_size?.constraints} coupling constraints · objective ₹{c.solve.objective?.toFixed?.(0)}{c.solve.gap != null ? ` · optimality gap ${(c.solve.gap * 100).toFixed(1)}%` : ''}{c.solve.model_size?.warm_start_objective != null ? ` · heuristic start ₹${Math.round(c.solve.model_size.warm_start_objective)}` : ''}</div>
             </>
           )}
           <h4 style={{ marginTop: 12 }}>Operator table</h4>

@@ -57,22 +57,33 @@ def irrigation_state_for_day(cfg: SunflowConfig, day: date, warmup_days: int = 6
     delivered each day, and return today's requirement/urgency per feeder."""
     agro = load_daily_agro()
     fm = FeederModel(cfg)
+    empty = {"required_blocks": 0, "needed_blocks_total": 0, "urgency": 0.0, "critical": False, "depletion_mm": 0.0, "requirement_mm": 0.0, "crop": None}
     out: Dict[str, Dict[str, float]] = {}
     for f in cfg.feeders:
-        cal = CropCalendar(cfg.crops[f.crop_group])
-        fi = FeederIrrigation(f.name, SoilBucket.initial(cal, cfg.irrigation), fm.irrigated_ha(f.name), fm.n_pumps(f.name),
-                              cfg.pumps.discharge_m3_per_h, cfg.irrigation.application_efficiency)
-        plan = None
+        # one soil bucket per crop in the rotation; the crop in season on `day` sets the feeder's requirement
+        buckets = {}
+        for g in f.crop_groups():
+            cal = CropCalendar(cfg.crops[g])
+            buckets[g] = (cal, FeederIrrigation(f.name, SoilBucket.initial(cal, cfg.irrigation), fm.irrigated_ha(f.name), fm.n_pumps(f.name),
+                                                cfg.pumps.discharge_m3_per_h, cfg.irrigation.application_efficiency))
+        plans = {g: None for g in buckets}
         for k in range(warmup_days, -1, -1):
             d = day - timedelta(days=k)
             if d not in agro.index:
                 continue
             row = agro.loc[d]
-            plan = fi.plan_for_day(d, float(row["et0"]), float(row["rain"]), cfg.rules.min_blocks_per_feeder)
-            if k > 0:
-                fi.deliver(min(plan["needed_blocks_total"], cfg.rules.min_blocks_per_feeder))
-        out[f.name] = plan or {"required_blocks": 0, "needed_blocks_total": 0, "urgency": 0.0, "critical": False,
-                                "depletion_mm": 0.0, "requirement_mm": 0.0}
+            for g, (cal, fi) in buckets.items():
+                if not cal.in_season(d):
+                    continue
+                plans[g] = fi.plan_for_day(d, float(row["et0"]), float(row["rain"]), cfg.rules.min_blocks_per_feeder)
+                if k > 0:
+                    fi.deliver(min(plans[g]["needed_blocks_total"], cfg.rules.min_blocks_per_feeder))
+        active = [g for g, (cal, _) in buckets.items() if cal.in_season(day) and plans[g] is not None]
+        if active:
+            g = max(active, key=lambda x: plans[x]["urgency"])
+            out[f.name] = dict(plans[g], crop=g)
+        else:
+            out[f.name] = dict(empty)
     return out
 
 

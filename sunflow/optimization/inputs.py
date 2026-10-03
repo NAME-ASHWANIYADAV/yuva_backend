@@ -45,11 +45,13 @@ class SolveOptions:
     allow_night_compensation: bool = True
     max_night_blocks_override: Optional[int] = None   # conflict attribution only: lift the night-compensation cap
     max_spells: Optional[int] = None
+    split_lattice_blocks: int = 1               # time lattice (blocks) for the first start and the gap of two-spell patterns
+    split_night_options: str = "cap"            # two-spell patterns with night compensation: only at the cap ("cap") or every allowed value ("all")
     thermal_margin_c: Optional[float] = None
     participation: Optional[float] = None       # planning participation (default: verification P90 value)
     robust: bool = True                         # plan under the verifier's pessimistic thermal/ambient settings
     time_limit_s: float = 30.0
-    mip_gap: float = 0.02
+    mip_gap: float = 0.005
     solar_quantile_for_import: Optional[str] = None
 
 

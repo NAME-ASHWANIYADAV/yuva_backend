@@ -49,7 +49,7 @@ def test_thermal_constraint_binds_under_heat(cfg, weights):
     sim_n = simulate(res_n.plan, hot, cfg, participation=v.participation, thermal_factor=v.thermal_factor, ambient_offset_c=v.ambient_offset_c)
     # without the thermal constraint the plan overheats under the pessimistic band
     assert sim_n.metrics["dt_max_hot_spot_c"] > cfg.thermal.hot_spot_limit_c
-    res_t = solve_plan(build_inputs(cfg, hot, weights, SolveOptions(max_spells=2)))
+    res_t = solve_plan(build_inputs(cfg, hot, weights, SolveOptions(max_spells=2, split_night_options="all")))
     assert res_t.status in ("optimal", "feasible"), res_t.message
     sim_t = simulate(res_t.plan, hot, cfg, participation=v.participation, thermal_factor=v.thermal_factor, ambient_offset_c=v.ambient_offset_c)
     assert sim_t.metrics["dt_max_hot_spot_c"] <= cfg.thermal.hot_spot_limit_c - weights.thermal_margin_c + 0.05

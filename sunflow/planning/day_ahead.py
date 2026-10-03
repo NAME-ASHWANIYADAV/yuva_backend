@@ -64,7 +64,7 @@ def plan_day(cfg: SunflowConfig, weights: Weights, day: date, scenario: Optional
     base_sim = simulate(bl, scenario, cfg)                     # expected conditions
     base_rep = verify(bl, scenario, cfg, settings)              # pessimistic check of today's practice
     cert = certify(cfg, scenario, weights, options, settings, baseline=bl)
-    plan_sim = simulate(cert.plan, scenario, cfg)
+    plan_sim = simulate(cert.plan, scenario, cfg, night_comp=cert.night_comp)
     expl = explain_plan(cert, cfg, base_sim, plan_sim, grid)
     msgs = farmer_messages(cert.plan, cfg, day, grid)
     op = operator_table(cert.plan, cfg, grid)
@@ -119,7 +119,7 @@ def result_to_dict(r: DayPlanResult) -> dict:
             "verify": (r.certified.report.as_dict() if r.certified.report else None),
             "solve": ({"status": r.certified.solve.status, "objective": r.certified.solve.objective,
                        "solve_time_s": round(r.certified.solve.solve_time_s, 2), "binding": r.certified.solve.binding,
-                       "model_size": r.certified.solve.model_size} if r.certified.solve else None),
+                       "model_size": r.certified.solve.model_size, "gap": r.certified.solve.gap} if r.certified.solve else None),
         },
         "plan": _sim_to_dict(r.plan_sim),
         "explanations": r.explanations,

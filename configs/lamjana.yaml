@@ -49,6 +49,7 @@ feeders:
     n_dts: 24
     dt_kva_pattern: [100, 63]
     crop_group: "kharif_soybean"
+    rabi_crop_group: "rabi_chana"      # ASSUMED rotation soybean -> chickpea
   - name: "Lamjana II"
     pt: "PT-2"
     published_slot: ["07:30", "15:30"]
@@ -61,6 +62,7 @@ feeders:
     n_dts: 24
     dt_kva_pattern: [100, 63]
     crop_group: "kharif_soybean"
+    rabi_crop_group: "rabi_wheat"      # ASSUMED rotation soybean -> wheat
 
 distribution_transformers:   # ASSUMED, per DT rating class; SYNTHETIC inventory is generated from these
   pumps_per_dt:

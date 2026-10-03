@@ -42,24 +42,47 @@ class Certified:
     rung: str = ""
     conflicts: List[dict] = field(default_factory=list)
     alert: str = ""
+    max_spells_allowed: int = 1          # spells per feeder the issuing rung allowed (for independent re-verification)
 
     @property
     def certified(self) -> bool:
         return self.status in (CERTIFIED, CERTIFIED_AFTER_TIGHTENING, CERTIFIED_WITH_RELAXATION)
 
 
+SPLIT_TIME_LIMIT_S = 15.0     # split-spell models are larger; the heuristic warm start guarantees an incumbent
+SPLIT_MIP_GAP = 0.03
+
+
+def _split(base: SolveOptions, **kw) -> SolveOptions:
+    return replace(base, max_spells=max(2, base.max_spells or 0), time_limit_s=min(base.time_limit_s, SPLIT_TIME_LIMIT_S),
+                   mip_gap=max(base.mip_gap, SPLIT_MIP_GAP), **kw)
+
+
 def _rungs(base: SolveOptions) -> List[dict]:
     return [
         {"name": "nominal", "opts": base},
-        {"name": "split_spells", "opts": replace(base, max_spells=max(2, base.max_spells or 0))},
-        {"name": "feasibility_focus", "opts": replace(base, max_spells=max(2, base.max_spells or 0), irrigation_hard=False,
-                                                      use_fairness=False, use_stability=False, use_surplus=False)},
+        {"name": "split_spells", "opts": _split(base)},
+        {"name": "feasibility_focus", "opts": _split(base, irrigation_hard=False, use_fairness=False, use_stability=False, use_surplus=False,
+                                                      split_night_options="all")},
     ]
+
+
+def economic_cost_inr(plan: Plan, scenario: Scenario, cfg: SunflowConfig, weights: Weights, night_comp: Optional[Dict[str, float]] = None) -> float:
+    """Day cost of a plan under expected conditions, economic terms only (import, lost surplus, switching, night
+    compensation energy + penalty). Used for the never-worse-than-baseline guard."""
+    from ..simulation.truth_engine import simulate
+    sim = simulate(plan, scenario, cfg, night_comp=night_comp)      # import already includes night-compensation energy
+    mt = sim.metrics
+    cost = weights.import_inr_per_kwh * mt["import_kwh"] + weights.surplus_inr_per_kwh * mt.get("surplus_kwh", 0.0)         + weights.switching_inr_per_event * mt["switchings"]
+    for f, nb in (night_comp or {}).items():
+        if nb > 0:
+            cost += nb * weights.night_comp_inr_per_block
+    return float(cost)
 
 
 def attribute_conflict(cfg: SunflowConfig, scenario: Scenario, weights: Weights, base: SolveOptions) -> List[dict]:
     """Which single constraint family, when relaxed, restores feasibility? (deterministic conflict attribution)"""
-    relaxed_base = replace(base, max_spells=max(2, base.max_spells or 0), irrigation_hard=False,
+    relaxed_base = replace(base, max_spells=max(2, base.max_spells or 0), irrigation_hard=False, split_night_options="all",
                            time_limit_s=min(base.time_limit_s, 8.0), mip_gap=0.05)
     families = [
         ("transformer_hot_spot_limit", replace(relaxed_base, use_thermal=False)),
@@ -82,6 +105,25 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
     ladder: List[dict] = []
     last_solve: Optional[SolveResult] = None
     any_solver_problem = False
+    bl = baseline or baseline_plan(cfg)
+
+    def guard(cert: Certified) -> Certified:
+        """Never worse than today's practice: if the published timetable itself verifies and is not more expensive
+        under expected conditions, issue the timetable (an optimiser cannot make the operator worse off)."""
+        bl_rep = verify(bl, scenario, cfg, settings)
+        if not bl_rep.ok:
+            return cert
+        c_plan = economic_cost_inr(cert.plan, scenario, cfg, weights, cert.night_comp)
+        c_base = economic_cost_inr(bl, scenario, cfg, weights)
+        cert.ladder.append({"rung": "baseline_guard", "plan_cost_inr": round(c_plan, 1), "baseline_cost_inr": round(c_base, 1),
+                            "baseline_verified": True})
+        if c_base <= c_plan + 1e-6:
+            log.info(f"baseline guard: published timetable (Rs {c_base:,.0f}) not worse than plan (Rs {c_plan:,.0f}); issuing timetable")
+            return Certified(status=CERTIFIED, plan=bl, report=bl_rep, ladder=cert.ladder, solve=cert.solve, night_comp={},
+                             irrigation_deferred=False, rung="baseline_guard", max_spells_allowed=cfg.rules.max_spells,
+                             alert="Published timetable is already as cheap as any certified plan today; no change issued.")
+        return cert
+
     for i, rung in enumerate(_rungs(base)):
         opts: SolveOptions = rung["opts"]
         margin = opts.thermal_margin_c if opts.thermal_margin_c is not None else weights.thermal_margin_c
@@ -94,22 +136,25 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
             if res.plan is None:
                 entry["verify"] = None
                 ladder.append(entry)
-                if res.status in ("error", "timeout"):
+                if res.status == "error":
                     any_solver_problem = True
+                elif res.status == "timeout":
+                    any_solver_problem = True   # could not prove infeasible nor find a plan in time; keep trying other rungs
                 break  # infeasible or failed: tightening cannot help, move to the next rung
             deferred = any(v > 1e-6 for v in res.irrigation_shortfall.values())
-            rep = verify(res.plan, scenario, cfg, settings, night_comp=res.night_comp, irrigation_deferred=deferred)
+            allowed = o.max_spells if o.max_spells is not None else cfg.rules.max_spells
+            rep = verify(res.plan, scenario, cfg, settings, night_comp=res.night_comp, irrigation_deferred=deferred, max_spells=allowed)
             entry["verify"] = rep.as_dict()
             ladder.append(entry)
             if rep.ok:
                 uses_night = any(v > 1e-6 for v in res.night_comp.values())
                 if i == 0 and uses_night and base.max_spells in (None, 1):
                     # a split spell (one extra switching) is preferable to sending farmers water at night: try it
-                    alt_opts = replace(o, max_spells=2)
+                    alt_opts = _split(o)
                     alt = solve_plan(build_inputs(cfg, scenario, weights, alt_opts))
                     if alt.plan is not None and not any(v > 1e-6 for v in alt.night_comp.values()):
                         alt_def = any(v > 1e-6 for v in alt.irrigation_shortfall.values())
-                        alt_rep = verify(alt.plan, scenario, cfg, settings, night_comp=alt.night_comp, irrigation_deferred=alt_def)
+                        alt_rep = verify(alt.plan, scenario, cfg, settings, night_comp=alt.night_comp, irrigation_deferred=alt_def, max_spells=2)
                         ladder.append({"rung": "split_instead_of_night", "tightening": k, "solve_status": alt.status,
                                        "solve_time_s": round(alt.solve_time_s, 2), "thermal_margin_c": alt_opts.thermal_margin_c,
                                        "participation": alt_opts.participation, "max_spells": 2, "verify": alt_rep.as_dict()})
@@ -117,10 +162,10 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
                             from ..simulation.types import plan_spells
                             split_used = any(len(plan_spells(alt.plan[f])) > 1 for f in alt.plan)
                             log.info("certified without night compensation" + (" using split spells" if split_used else ""))
-                            return Certified(status=CERTIFIED_WITH_RELAXATION if split_used else CERTIFIED, plan=alt.plan, report=alt_rep,
+                            return guard(Certified(status=CERTIFIED_WITH_RELAXATION if split_used else CERTIFIED, plan=alt.plan, report=alt_rep,
                                              ladder=ladder, solve=alt, night_comp=alt.night_comp, irrigation_deferred=alt_def,
-                                             rung="split_instead_of_night" if split_used else "nominal",
-                                             alert=("Plan uses two supply spells for some feeders instead of night compensation (allowed relaxation)." if split_used else ""))
+                                             rung="split_instead_of_night" if split_used else "nominal", max_spells_allowed=2,
+                                             alert=("Plan uses two supply spells for some feeders instead of night compensation (allowed relaxation)." if split_used else "")))
                 if i == 0 and k == 0:
                     status = CERTIFIED
                 elif i == 0:
@@ -135,10 +180,13 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
                 if any(v > 1e-6 for v in res.night_comp.values()):
                     alert += " Night compensation (circular clause 3) invoked for some feeders."
                 log.info(f"certified status={status} rung={rung['name']} tightening={k}")
-                return Certified(status=status, plan=res.plan, report=rep, ladder=ladder, solve=res,
-                                 night_comp=res.night_comp, irrigation_deferred=deferred, rung=rung["name"], alert=alert.strip())
-            # verification failed: tighten and retry this rung
-    bl = baseline or baseline_plan(cfg)
+                return guard(Certified(status=status, plan=res.plan, report=rep, ladder=ladder, solve=res,
+                                       night_comp=res.night_comp, irrigation_deferred=deferred, rung=rung["name"], alert=alert.strip(),
+                                       max_spells_allowed=int(allowed)))
+            # verification failed: tightening the thermal margin only helps a thermal mismatch
+            if "hot_spot" not in rep.kinds():
+                log.warning(f"verification failed on non-thermal rules {rep.kinds()}: model/verifier mismatch, next rung")
+                break
     rep = verify(bl, scenario, cfg, settings)
     conflicts: List[dict] = []
     if any_solver_problem:
@@ -149,4 +197,5 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
     else:
         status, alert = FALLBACK_BASELINE, "Optimiser plans failed independent verification; published timetable issued with alert."
     log.warning(alert)
-    return Certified(status=status, plan=bl, report=rep, ladder=ladder, solve=last_solve, conflicts=conflicts, alert=alert, rung="baseline")
+    return Certified(status=status, plan=bl, report=rep, ladder=ladder, solve=last_solve, conflicts=conflicts, alert=alert, rung="baseline",
+                     max_spells_allowed=cfg.rules.max_spells)

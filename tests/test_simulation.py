@@ -49,9 +49,13 @@ def test_failed_dt_moves_load_to_neighbours(cfg):
     victim = ids[5]
     fm1 = FeederModel(cfg, failed_dts={victim})
     assert fm1.dts[victim].K_on == 0.0
-    assert abs(fm1.feeder_installed_kva("Jawali") - fm0.feeder_installed_kva("Jawali")) < 1e-9
-    assert fm1.dts[ids[4]].carried_kva > fm0.dts[ids[4]].carried_kva
-    assert fm1.dts[ids[6]].carried_kva > fm0.dts[ids[6]].carried_kva
+    # neighbours take the failed DT's pumps only up to their nameplate; the rest is recorded as unserved
+    moved = (fm1.dts[ids[4]].carried_kva - fm0.dts[ids[4]].carried_kva) + (fm1.dts[ids[6]].carried_kva - fm0.dts[ids[6]].carried_kva)
+    assert moved > 0
+    assert fm1.dts[ids[4]].carried_kva <= fm1.dts[ids[4]].rating_kva + 1e-9
+    assert fm1.dts[ids[6]].carried_kva <= fm1.dts[ids[6]].rating_kva + 1e-9
+    assert abs(moved + fm1.unserved_kva["Jawali"] - fm0.dts[victim].installed_kva) < 1e-9
+    assert fm1.retap_log and fm1.retap_log[0]["failed"] == victim
 
 
 def test_metrics_and_outage_handling(cfg):
@@ -63,6 +67,16 @@ def test_metrics_and_outage_handling(cfg):
     assert res.violations and res.violations[0]["kind"] == "energised_during_outage"
     assert res.feeder_kva["Kharosa"][TimeGrid().block_of("12:00")] == 0.0
     assert res.metrics["load_kwh"] > 0 and res.metrics["pv_kwh"] > 0
+
+
+def test_crop_rotation_by_season(cfg):
+    from sunflow.simulation.weather import irrigation_state_for_day
+    rabi = irrigation_state_for_day(cfg, date(2025, 1, 15))
+    assert rabi["Jawali"]["crop"] == "rabi_chana" and rabi["Chalburga"]["crop"] == "rabi_wheat"
+    assert rabi["Kharosa"]["crop"] is None and rabi["Kharosa"]["required_blocks"] == 0
+    kharif = irrigation_state_for_day(cfg, date(2025, 10, 20))
+    assert all(v["crop"] and v["crop"].startswith("kharif") for v in kharif.values())
+    assert all(0.0 <= v["urgency"] <= 1.0 for v in kharif.values())
 
 
 def test_scenario_from_real_era5_day(cfg):

@@ -45,18 +45,31 @@ class FeederModel:
         self._reallocate_failed()
 
     def _reallocate_failed(self) -> None:
+        """Re-tap a failed DT's pumps to its two neighbours, but only up to each neighbour's nameplate headroom
+        (ASSUMED operating practice: the lineman does not knowingly overload the surviving transformers).
+        Pumps that cannot be re-tapped are recorded as unserved until the DT is replaced."""
+        self.unserved_kva: Dict[str, float] = {f: 0.0 for f in self.feeder_dts}
+        self.retap_log: List[dict] = []
         for fname, ids in self.feeder_dts.items():
             for i, did in enumerate(ids):
                 dt = self.dts[did]
                 if not dt.failed:
                     continue
                 dt.carried_kva = 0.0
+                remaining = dt.installed_kva
                 neighbours = [ids[j] for j in (i - 1, i + 1) if 0 <= j < len(ids) and not self.dts[ids[j]].failed]
-                if not neighbours:
-                    continue
-                share = dt.installed_kva / len(neighbours)
+                moved = {}
                 for nid in neighbours:
-                    self.dts[nid].carried_kva += share
+                    n = self.dts[nid]
+                    headroom = max(0.0, n.rating_kva - n.carried_kva)
+                    take = min(headroom, remaining / max(1, len(neighbours)) if nid != neighbours[-1] else remaining)
+                    take = min(take, remaining)
+                    n.carried_kva += take
+                    remaining -= take
+                    moved[nid] = round(take, 1)
+                self.unserved_kva[fname] += remaining
+                self.retap_log.append({"failed": did, "feeder": fname, "moved_kva": moved, "unserved_kva": round(remaining, 1),
+                                       "unserved_pumps": int(round(remaining / max(self.cfg.pumps.kva_per_pump, 1e-6)))})
 
     def feeder_installed_kva(self, feeder: str) -> float:
         """kVA drawn by the feeder at participation 1.0 (failed DTs' pumps carried by neighbours)."""

@@ -34,7 +34,10 @@ def apply_scenario(cfg: SunflowConfig, base: Scenario, kind: str, grid: TimeGrid
         sc.weather_source = f"ambient from real ERA5 day {day.isoformat()} (hottest of {day.year}) + {sc.ambient_offset_c:.1f} C"
     elif kind == "dt_failure":
         fm = FeederModel(cfg)
-        dt_id = p.get("dt_id") or fm.feeder_dts["Chalburga"][len(fm.feeder_dts["Chalburga"]) // 2]
+        ids = fm.feeder_dts["Chalburga"]
+        mid = len(ids) // 2
+        # default: a 63 kVA unit in the middle of Chalburga (its 100 kVA neighbours can absorb part of its pumps)
+        dt_id = p.get("dt_id") or next((d for d in ids[mid:] if fm.dts[d].rating_kva == 63), ids[mid])
         sc.failed_dts = set(base.failed_dts) | {dt_id}
     elif kind == "feeder_outage":
         feeder = p.get("feeder", "Kharosa")

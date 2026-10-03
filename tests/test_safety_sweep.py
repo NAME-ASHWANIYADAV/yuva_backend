@@ -25,7 +25,8 @@ def test_certified_plans_have_zero_violations(cfg, weights, i):
     cert = certify(cfg, sc, weights, SolveOptions(time_limit_s=20), settings)
     assert cert.status in ("CERTIFIED", "CERTIFIED_AFTER_TIGHTENING", "CERTIFIED_WITH_RELAXATION", "FALLBACK_BASELINE", "INFEASIBLE")
     if cert.certified:
-        rep = verify(cert.plan, sc, cfg, settings, night_comp=cert.night_comp, irrigation_deferred=cert.irrigation_deferred)
+        rep = verify(cert.plan, sc, cfg, settings, night_comp=cert.night_comp, irrigation_deferred=cert.irrigation_deferred,
+                     max_spells=cert.max_spells_allowed)
         assert rep.ok, rep.kinds()
     else:
         # the published timetable is returned, never a fabricated plan

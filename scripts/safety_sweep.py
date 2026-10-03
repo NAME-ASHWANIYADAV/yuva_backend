@@ -47,7 +47,8 @@ def run(n: int, seed: int, time_limit: float) -> dict:
         if cert.solve is not None:
             solve_times.append(cert.solve.solve_time_s)
         if cert.certified:
-            rep = verify(cert.plan, sc, cfg, settings, night_comp=cert.night_comp, irrigation_deferred=cert.irrigation_deferred)
+            rep = verify(cert.plan, sc, cfg, settings, night_comp=cert.night_comp, irrigation_deferred=cert.irrigation_deferred,
+                         max_spells=cert.max_spells_allowed)
             if not rep.ok:
                 violations_on_certified += 1
                 worst.append({"i": i, "day": day.isoformat(), "kinds": rep.kinds()})
