@@ -38,12 +38,14 @@ class DemoState:
     log: List[dict] = field(default_factory=list)
     cache: Dict[str, dict] = field(default_factory=dict)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    warm_status: str = "off"              # off | running | done | failed (reported by /api/health)
     grid: TimeGrid = field(default_factory=TimeGrid)
 
     @classmethod
     def create(cls, warm: bool = True) -> "DemoState":
         st = cls(cfg=load_config(), weights=load_weights())
         if warm:
+            st.warm_status = "running"
             threading.Thread(target=st.warm_up, name="sunflow-warmup", daemon=True).start()
         return st
 
@@ -53,15 +55,16 @@ class DemoState:
 
     def warm_up(self) -> None:
         """Precompute the default day and the named what-if scenarios so demo buttons answer from cache.
-        Every cached answer is a real computation; the action log reports it as 'cached' with its original time."""
+        Every cached answer is a real computation; the action log reports it as 'cached' with its original time.
+        Precomputation never changes what viewers see: the visible plan stays on the base day throughout."""
         try:
             self.reset()
             for kind, params in self.WARM_KINDS:
-                self.run_scenario(kind, dict(params))
-            self.current = self.base_result
-            self.scenario = copy.deepcopy(self.base_scenario)
+                self.run_scenario(kind, dict(params), activate=False)
+            self.warm_status = "done"
             log.info("warm-up complete")
         except Exception as exc:  # warm-up is best effort
+            self.warm_status = "failed"
             log.warning(f"warm-up failed: {exc!r}")
 
     # ------------------------------------------------------------------ core actions
@@ -87,6 +90,10 @@ class DemoState:
         return {"action": action, "detail": detail, "status": status, "seconds": round(time.time() - t0, 2), "ts": time.time()}
 
     def ensure(self) -> None:
+        # the warm-up thread plans the base day first; wait for it instead of planning the same day twice
+        t0 = time.time()
+        while self.current is None and self.warm_status == "running" and time.time() - t0 < 90:
+            time.sleep(0.2)
         if self.current is None:
             self.reset()
 
@@ -98,27 +105,44 @@ class DemoState:
         self.ensure()
         with self.lock:
             t0 = time.time()
+            prev = self.current or {}
             r = plan_day(self.cfg, self.weights, self.day, scenario=copy.deepcopy(self.scenario))
-            self.current = result_to_dict(r)
-            # the band inside the scenario is the one chosen at reset (learned model when available); keep its label
-            self.current["forecast_source"] = (self.base_result or {}).get("forecast_source", self.current["forecast_source"])                 if (self.current.get("scenario_kind") in (None, "base")) else self.current["forecast_source"]
+            out = result_to_dict(r)
+            kind = prev.get("scenario_kind")
+            if kind and kind != "base":
+                # re-planning while a what-if is active keeps the what-if's identity and labels
+                out["scenario_kind"] = kind
+                out["scenario_params"] = prev.get("scenario_params", {})
+                out["diff_vs_base"] = self._diff(self.base_result, out)
+                out["forecast_source"] = prev.get("forecast_source", out["forecast_source"])
+            else:
+                # the band inside the scenario is the one chosen at reset (learned model when available); keep its label
+                out["forecast_source"] = (self.base_result or {}).get("forecast_source", out["forecast_source"])
+            self.current = out
             self.announced_plan = plan_copy(r.certified.plan)
             self.max_spells_allowed = int(getattr(r.certified, 'max_spells_allowed', 1))
             self.log.append(self._entry("certify", r.certified.status, t0, r.certified.status))
             return self.current
 
-    def run_scenario(self, kind: str, params: Optional[dict] = None, intraday: bool = False, now: str = "11:00") -> dict:
+    def _activate_cached(self, kind: str, params: dict, cached: dict) -> dict:
+        self.log.append(self._entry(kind, f"cached (computed in {cached.get('compute_seconds', '?')} s)", time.time(), cached["certified"]["status"]))
+        self.current = cached
+        self.scenario = apply_scenario(self.cfg, self.base_scenario, kind, **params)
+        self.max_spells_allowed = int(cached.get("max_spells_allowed", 1))
+        return self.current
+
+    def run_scenario(self, kind: str, params: Optional[dict] = None, intraday: bool = False, now: str = "11:00",
+                     activate: bool = True) -> dict:
+        """Compute (or serve from cache) a what-if. activate=False only fills the cache (warm-up) and leaves the visible
+        plan, the active scenario and the allowed-spells setting untouched."""
         self.ensure()
         params = params or {}
         key = f"{kind}:{sorted(params.items())}:{intraday}:{now}"
         if key in self.cache:
-            cached = self.cache[key]
-            self.log.append(self._entry(kind, f"cached (computed in {cached.get('compute_seconds', '?')} s)", time.time(), cached["certified"]["status"]))
-            self.current = cached
-            self.scenario = apply_scenario(self.cfg, self.base_scenario, kind, **params)
-            self.max_spells_allowed = int(cached.get("max_spells_allowed", 1))
-            return self.current
+            return self._activate_cached(kind, params, self.cache[key]) if activate else self.cache[key]
         with self.lock:
+            if key in self.cache:      # computed by another request (or the warm-up) while this one waited for the lock
+                return self._activate_cached(kind, params, self.cache[key]) if activate else self.cache[key]
             t0 = time.time()
             sc = apply_scenario(self.cfg, self.base_scenario, kind, **params)
             if intraday and self.announced_plan is not None:
@@ -138,10 +162,13 @@ class DemoState:
             out["forecast_source"] = self.base_result["forecast_source"] + (" · rescaled to the scenario's solar day" if kind == "cloud_ramp" else "")
             out["compute_seconds"] = round(time.time() - t0, 1)
             out["max_spells_allowed"] = int(getattr(r.certified, "max_spells_allowed", 1))
+            self.cache[key] = out
+            if not activate:
+                self.log.append(self._entry(f"precompute {kind}", str(params), t0, r.certified.status))
+                return out
             self.scenario = sc
             self.current = out
             self.max_spells_allowed = out["max_spells_allowed"]
-            self.cache[key] = out
             self.log.append(self._entry(kind, str(params), t0, r.certified.status))
             return out
 

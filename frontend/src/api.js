@@ -1,4 +1,15 @@
-const BASE = import.meta.env.VITE_API_BASE || ''
+// Where the planning API lives.
+// - Served by the backend itself (local run, Docker, the Render service): same origin, so '' (relative /api paths).
+// - Hosted on Vercel (yuva-frntend.vercel.app, preview URLs, or any Vercel build): the Render service below.
+// - VITE_API_BASE set at build time overrides both (e.g. a custom domain or another backend).
+export const RENDER_API = 'https://yuva-backend-2i5n.onrender.com'
+
+/* global __VERCEL_BUILD__ */
+const onVercel = (typeof __VERCEL_BUILD__ !== 'undefined' && __VERCEL_BUILD__) ||
+  (typeof window !== 'undefined' && window.location.hostname.endsWith('.vercel.app'))
+
+export const BASE = import.meta.env.VITE_API_BASE ?? (onVercel ? RENDER_API : '')
+export const REMOTE = BASE !== ''
 
 async function call(path, opts = {}) {
   const t0 = performance.now()
@@ -28,4 +39,19 @@ export const api = {
   explain: () => call('/api/explain/last'),
   forecast: (day) => call(`/api/forecast${day ? `?day=${day}` : ''}`),
   impact: () => call('/api/impact/summary'),
+}
+
+/** Wait until the API answers. A sleeping free-tier instance holds the first request for up to about a minute;
+ *  network errors and 5xx during start-up are retried. Resolves to the health payload or throws after `maxWaitMs`. */
+export async function waitForApi(maxWaitMs = 150000) {
+  const t0 = Date.now()
+  let lastErr = null
+  while (Date.now() - t0 < maxWaitMs) {
+    try {
+      const { data } = await api.health()
+      if (data?.ok) return data
+    } catch (e) { lastErr = e }
+    await new Promise((r) => setTimeout(r, 3000))
+  }
+  throw lastErr || new Error('the planning server did not answer')
 }

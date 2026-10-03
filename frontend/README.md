@@ -12,7 +12,7 @@ npm install
 npm run dev          # http://localhost:5173, proxies /api to http://127.0.0.1:8000 (start the backend first)
 npm run build        # writes dist/, which the backend serves at http://127.0.0.1:8000/
 ```
-To point a built frontend at a backend on another host, set `VITE_API_BASE=https://your-backend` before `npm run build`.
+Hosted at https://yuva-frntend.vercel.app. On any `*.vercel.app` host (or any Vercel build) the screen calls the Render API at https://yuva-backend-2i5n.onrender.com; when the backend serves the build itself it uses the same origin. To point a build at a different backend, set `VITE_API_BASE=https://your-backend` before `npm run build` (in Vercel: Project Settings, Environment Variables). `vercel.json` adds the single-page-app fallback and long-lived caching for hashed assets.
 
 ## Screen
 One shared time axis runs through solar band, feeder spells, power-transformer loading and transformer heat; the

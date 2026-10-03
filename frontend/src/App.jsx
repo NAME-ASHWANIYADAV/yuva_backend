@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api } from './api.js'
+import { api, waitForApi } from './api.js'
 import Rail from './components/Rail.jsx'
 import Verdict from './components/Verdict.jsx'
 import DayScore from './components/DayScore.jsx'
@@ -21,6 +21,7 @@ export default function App() {
   const [view, setView] = useState('plan')
   const [impact, setImpact] = useState(null)
   const [showBaseline, setShowBaseline] = useState(false)
+  const [waking, setWaking] = useState(false)   // the hosted server was asleep and is starting
   const whyRef = useRef(null)
 
   const push = useCallback((action, detail, seconds, status) => {
@@ -39,9 +40,23 @@ export default function App() {
   }, [push])
 
   useEffect(() => {
-    api.config().then(({ data }) => setConfig(data)).catch((e) => setError(e.message))
-    run('Loading the plan', api.current, (data, s) => { setCurrent(data); push('load', `day ${data.day}`, s, data.certified.status) })
-    api.impact().then(({ data }) => setImpact(data)).catch(() => {})
+    let cancelled = false
+    const slow = setTimeout(() => { if (!cancelled) setWaking(true) }, 2500)
+    setBusy('Connecting to the planning server')
+    waitForApi()
+      .then(() => {
+        if (cancelled) return
+        clearTimeout(slow); setWaking(false); setBusy(null)
+        api.config().then(({ data }) => setConfig(data)).catch((e) => setError(e.message))
+        run('Loading the plan', api.current, (data, s) => { setCurrent(data); push('load', `day ${data.day}`, s, data.certified.status) })
+        api.impact().then(({ data }) => setImpact(data)).catch(() => {})
+      })
+      .catch((e) => {
+        if (cancelled) return
+        clearTimeout(slow); setWaking(false); setBusy(null)
+        setError(`The planning server did not answer (${e.message})`)
+      })
+    return () => { cancelled = true; clearTimeout(slow) }
   }, [run, push])
 
   const actions = useMemo(() => ({
@@ -65,8 +80,16 @@ export default function App() {
       <Rail current={current} config={config} busy={busy} view={view} onView={actions.view} onDay={(d) => actions.reset(d)} />
       <div className="work">
         <main className="main">
-          {error && <div className="error" role="alert">{error}. Reset the day and try again.</div>}
-          {view === 'plan' && !current && <section className="card"><div className="empty">Loading tomorrow's plan…</div></section>}
+          {error && <div className="error" role="alert">{error}. {current ? 'Reset the day and try again.' : 'Reload the page to try again.'}</div>}
+          {view === 'plan' && !current && !error && (
+            <section className="card">
+              <div className="empty">
+                {waking
+                  ? <><b>Waking the planning server.</b><br />The free hosting tier sleeps when nobody is using it, so the first load can take up to a minute. Tomorrow's plan appears here as soon as the server answers.</>
+                  : 'Loading tomorrow’s plan…'}
+              </div>
+            </section>
+          )}
           {view === 'plan' && current && (
             <>
               <section className="card"><div className="card__body"><Verdict current={current} config={config} showBaseline={showBaseline} actions={actions} busy={busy} /></div></section>

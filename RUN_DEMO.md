@@ -61,6 +61,11 @@ python scripts/append_results_to_claims.py
 ## 9. Launch the demo
 See DEMO_SCRIPT.md for the 5-minute sequence. Every button calls the real backend; the first action after start takes a few seconds (plan + certification).
 
+## Hosted
+- Operator screen: https://yuva-frntend.vercel.app (Vercel, built from the `yuva_frntend` repository). It calls the Render API automatically; set `VITE_API_BASE` in Vercel to point it elsewhere.
+- API and the same screen: https://yuva-backend-2i5n.onrender.com (Render, built from this repository's Dockerfile; `/api/health` reports the deployed commit and the warm-up state).
+- Free Render instances sleep when idle: open the link a minute before presenting.
+
 ## One-command alternative (Docker)
 ```bash
 docker build -t sunflow . && docker run -p 8000:8000 sunflow

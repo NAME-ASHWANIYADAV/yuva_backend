@@ -24,10 +24,11 @@ def create_app() -> FastAPI:
     state = DemoState.create(warm=os.environ.get("SUNFLOW_WARMUP", "1") != "0")
     app.state.demo = state
 
-    @app.get("/api/health")
+    @app.api_route("/api/health", methods=["GET", "HEAD"])
     def health():
         from ..ml.inference import ForecastModel
-        return {"ok": True, "version": __version__, "forecast_model": ForecastModel.available(), "day": state.day.isoformat()}
+        return {"ok": True, "version": __version__, "forecast_model": ForecastModel.available(), "day": state.day.isoformat(),
+                "warm_up": state.warm_status, "commit": (os.environ.get("RENDER_GIT_COMMIT") or "")[:7] or None}
 
     @app.get("/api/config")
     def config():
@@ -137,11 +138,11 @@ def create_app() -> FastAPI:
             app.mount("/assets", StaticFiles(directory=str(dist / "assets")), name="assets")
         index = dist / "index.html"
 
-        @app.get("/", include_in_schema=False)
+        @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)   # HEAD: platform health probes
         def root():
             return FileResponse(str(index))
 
-        @app.get("/demo", include_in_schema=False)
+        @app.api_route("/demo", methods=["GET", "HEAD"], include_in_schema=False)
         def demo():
             return FileResponse(str(index))
 

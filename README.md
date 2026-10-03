@@ -7,6 +7,8 @@ Case: Lamjana 33/11 kV substation, Latur (MSEDCL, PM-KUSUM Component C / MSKVY 2
 
 Repositories: backend and full project at [yuva_backend](https://github.com/NAME-ASHWANIYADAV/yuva_backend); the operator screen is mirrored standalone at [yuva_frntend](https://github.com/NAME-ASHWANIYADAV/yuva_frntend) (the backend serves its build from `frontend/dist`). Cached public weather data, the trained forecast model and the measured results are committed so a fresh clone demos offline.
 
+**Hosted demo:** https://yuva-frntend.vercel.app (operator screen on Vercel) calling the API at https://yuva-backend-2i5n.onrender.com (Render, Docker). The Render service also serves the same screen at its own URL. Free Render instances sleep after about 15 minutes idle; the first visit then takes up to a minute while the screen says the server is waking, and the named what-if scenarios are precomputed in the background during the next minute.
+
 MSEDCL gives every agricultural feeder 8 hours of 3-phase supply a day on a monthly, manually executed timetable. Its own circular tells substation operators to switch feeders "depending upon availability of solar power, loading on Power Transformers and Ag feeders", but gives them no forecast, no transformer temperature, no crop-water deadline and no feasibility check. SUNFLOW produces, verifies and publishes that plan every evening, re-plans only when it must, explains itself from solver facts, and can never do worse than the published timetable because that timetable is its last fallback.
 
 ## What is where (layers)

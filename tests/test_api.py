@@ -43,3 +43,26 @@ def test_scenarios_and_request(client):
     r = client.post("/api/request-slot", json={"feeder": "Nope", "start": "07:30"}); assert r.status_code == 404
     r = client.post("/api/request-slot", json={"feeder": "Jawali", "start": "07:37"}); assert r.status_code == 400
     f = client.get("/api/forecast?day=2025-04-10").json(); assert "band" in f and len(f["band"]["p50"]) == 96
+
+
+def test_precompute_leaves_visible_plan_alone(client):
+    """Warm-up fills the cache without changing what viewers see; a later click serves the cached answer, and
+    re-planning while a what-if is active keeps the what-if's identity."""
+    from datetime import date
+    st = client.app.state.demo
+    st.reset(date(2025, 4, 11))
+    base = st.current
+    out = st.run_scenario("cloud_ramp", {}, activate=False)
+    assert st.current is base and out["scenario_kind"] == "cloud_ramp"
+    cur = client.get("/api/demo/current").json()
+    assert cur["day"] == "2025-04-11" and cur.get("scenario_kind") in (None, "base")
+    shown = client.post("/api/scenario/cloud_ramp", json={}).json()
+    assert shown["scenario_kind"] == "cloud_ramp" and shown["compute_seconds"] == out["compute_seconds"]   # served from cache
+    replanned = client.post("/api/plan/certify").json()
+    assert replanned["scenario_kind"] == "cloud_ramp" and "diff_vs_base" in replanned
+
+
+def test_health_reports_warm_up_and_answers_head(client):
+    h = client.get("/api/health").json()
+    assert h["warm_up"] == "off" and "commit" in h
+    assert client.head("/api/health").status_code == 200
