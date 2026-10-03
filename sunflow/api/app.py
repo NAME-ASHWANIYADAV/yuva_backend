@@ -121,9 +121,14 @@ def create_app() -> FastAPI:
     @app.get("/api/impact/summary")
     def impact_summary():
         p = results_dir() / "experiments" / "summary.json"
+        sweep_p = results_dir() / "safety" / "sweep.json"
+        sweep = None
+        if sweep_p.exists():
+            raw = json.load(open(sweep_p, encoding="utf-8"))
+            sweep = {k: raw.get(k) for k in ("n", "seed", "status_counts", "certified_plans_with_violations", "median_solve_s", "p90_solve_s", "elapsed_s")}
         if not p.exists():
-            return {"available": False, "note": "run scripts/run_experiments.py to generate results/experiments/summary.json"}
-        return {"available": True, **json.load(open(p, encoding="utf-8"))}
+            return {"available": False, "note": "run scripts/run_experiments.py to generate results/experiments/summary.json", "sweep": sweep}
+        return {"available": True, "sweep": sweep, **json.load(open(p, encoding="utf-8"))}
 
     dist = repo_root() / "frontend" / "dist"
     if dist.exists():

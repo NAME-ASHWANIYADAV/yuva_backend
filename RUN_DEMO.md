@@ -33,7 +33,7 @@ cd frontend && npm run build && cd ..
 ```bash
 python scripts/run_backend.py
 ```
-Open http://127.0.0.1:8000/demo (operator console at http://127.0.0.1:8000/, API docs at http://127.0.0.1:8000/docs).
+Open http://127.0.0.1:8000/ (the same operator screen is also served at /demo; API docs at http://127.0.0.1:8000/docs).
 
 For UI development instead: `cd frontend && npm run dev` (proxies /api to port 8000).
 
