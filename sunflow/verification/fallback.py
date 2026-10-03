@@ -190,7 +190,7 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
     rep = verify(bl, scenario, cfg, settings)
     conflicts: List[dict] = []
     if any_solver_problem:
-        status, alert = FALLBACK_BASELINE, "Solver failure; published timetable issued with alert."
+        status, alert = FALLBACK_BASELINE, "Solver could not find a plan or prove infeasibility within the time limit; published timetable issued with alert."
     elif last_solve is not None and last_solve.plan is None:
         conflicts = attribute_conflict(cfg, scenario, weights, base)
         status, alert = INFEASIBLE, "No plan satisfies every hard rule under the declared assumptions; published timetable issued with alert."

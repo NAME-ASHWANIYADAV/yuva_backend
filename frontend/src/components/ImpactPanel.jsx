@@ -1,6 +1,13 @@
 import React from 'react'
 
 const f1 = (v, d = 1) => (v == null ? '—' : Number(v).toLocaleString('en-IN', { maximumFractionDigits: d }))
+const isFrac = (name) => /frac/.test(name)
+const cell = (name, q) => {
+  if (!q || q.median == null) return '—'
+  if (isFrac(name)) return `${f1(100 * q.median, 1)}% (${f1(100 * q.p10, 1)}–${f1(100 * q.p90, 1)})`
+  return `${f1(q.median)} (${f1(q.p10)}–${f1(q.p90)})`
+}
+const label = (name) => (isFrac(name) ? name.replace('_frac', ' %').replace('_of_pv', ' of PV').replace('_', ' ') : name)
 
 export default function ImpactPanel({ impact }) {
   if (!impact) return <div className="kv">Loading…</div>
@@ -14,7 +21,7 @@ export default function ImpactPanel({ impact }) {
         <thead><tr><th>metric (per day)</th>{variants.map((v) => <th key={v}>{v}</th>)}</tr></thead>
         <tbody>
           {Object.entries(metrics).map(([name, row]) => (
-            <tr key={name}><td>{name}</td>{variants.map((v) => <td key={v}>{row[v] ? `${f1(row[v].median)} (${f1(row[v].p10)}–${f1(row[v].p90)})` : '—'}</td>)}</tr>
+            <tr key={name}><td>{label(name)}</td>{variants.map((v) => <td key={v}>{cell(name, row[v])}</td>)}</tr>
           ))}
         </tbody>
       </table>

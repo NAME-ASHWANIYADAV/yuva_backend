@@ -69,7 +69,14 @@ def describe_binding(binding: Dict[str, list], grid: TimeGrid = TimeGrid()) -> L
 def explain_plan(cert: Certified, cfg: SunflowConfig, baseline_sim: SimResult, plan_sim: SimResult,
                  grid: TimeGrid = TimeGrid()) -> List[str]:
     lines: List[str] = []
-    if cert.solve is not None and cert.solve.binding:
+    if cert.rung == "baseline_guard":
+        g = next((e for e in cert.ladder if e.get("rung") == "baseline_guard"), {})
+        lines.append(f"Published timetable issued unchanged: it passes the independent verifier today and costs Rs {g.get('baseline_cost_inr', 0):,.0f} "
+                     f"against Rs {g.get('plan_cost_inr', 0):,.0f} for the best certified optimiser plan (import incl. night hours, lost surplus, "
+                     f"switching, night-compensation penalty). The optimiser's alternative is kept for the record below.")
+        if cert.solve is not None and cert.solve.binding:
+            lines += ["Optimiser alternative: " + x for x in describe_binding(cert.solve.binding, grid)]
+    elif cert.solve is not None and cert.solve.binding:
         lines += describe_binding(cert.solve.binding, grid)
     # what moved vs the published timetable and the measurable consequence
     for f in cfg.feeders:

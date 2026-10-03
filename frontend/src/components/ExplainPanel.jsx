@@ -7,8 +7,12 @@ function Ladder({ ladder }) {
       <thead><tr><th>rung</th><th>tightening</th><th>solve</th><th>time (s)</th><th>margin °C</th><th>spells</th><th>verifier</th></tr></thead>
       <tbody>
         {ladder.map((r, i) => (
+          r.rung === 'baseline_guard' ? (
+            <tr key={i}><td>{r.rung}</td><td colSpan={6}>published timetable verified: ₹{Math.round(r.baseline_cost_inr).toLocaleString('en-IN')}/day vs best certified plan ₹{Math.round(r.plan_cost_inr).toLocaleString('en-IN')}/day {r.baseline_cost_inr <= r.plan_cost_inr ? '→ timetable issued unchanged' : '→ plan issued'}</td></tr>
+          ) : (
           <tr key={i}><td>{r.rung}</td><td>{r.tightening}</td><td>{r.solve_status}</td><td>{r.solve_time_s}</td><td>{r.thermal_margin_c}</td><td>{r.max_spells ?? 1}</td>
             <td>{r.verify ? (r.verify.ok ? 'OK' : Object.entries(r.verify.kinds).map(([k, v]) => `${k}×${v}`).join(', ')) : '—'}</td></tr>
+          )
         ))}
       </tbody>
     </table>

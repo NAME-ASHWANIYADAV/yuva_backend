@@ -39,14 +39,18 @@ For UI development instead: `cd frontend && npm run dev` (proxies /api to port 8
 
 ## 7. Run tests
 ```bash
-python -m pytest -q                       # unit + integration (~5-10 min, many MILP solves)
+python -m pytest -q                       # unit + integration (~10 min, many MILP solves; 65 tests)
 set SUNFLOW_SWEEP_N=1000 && python -m pytest tests/test_safety_sweep.py -q   # full property sweep via pytest (slow)
 python scripts/safety_sweep.py --n 1000   # same sweep as a script; writes results/safety/sweep.json
 ```
 
-## 8. Run experiments and ablations (writes results/experiments/)
+## 8. Run experiments and ablations (writes results/experiments/; about 45 min on a laptop)
 ```bash
-python scripts/run_experiments.py --days 16 --per-day 2
+python scripts/run_experiments.py --days 16 --per-day 2 --time-limit 15
+```
+Then copy the measured numbers into the claims register (idempotent):
+```bash
+python scripts/append_results_to_claims.py
 ```
 
 ## 9. Launch the demo
