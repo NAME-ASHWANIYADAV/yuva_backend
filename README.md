@@ -34,6 +34,8 @@ Baseline = MSEDCL's published Annexure-A slots for Lamjana (PT-1: Kharosa 09:30�
 
 Measured (this machine, `scripts/safety_sweep.py --n 1000`): over 1,000 seeded random stress scenarios (participation 0.5–1.0, thermal constants ±30 %, ambient −2 to +6 °C, random DT failures and feeder outages), 760 plans were certified with **zero** verifier violations, 228 scenarios were reported INFEASIBLE with conflict attribution (no plan fabricated), and 12 fell back to the published timetable within the 120 s budget; median certification 2.0 s, P90 23 s. Details in [CLAIMS.md](CLAIMS.md).
 
+What "never worse" means, precisely: SUNFLOW never issues a plan that fails the independent verifier, and it never issues a plan that is more expensive (import incl. night hours, lost surplus, switching, night penalty) than the published timetable when that timetable itself passes the verifier. When the timetable fails the pessimistic check (28 % of experiment scenarios), the only rule-compliant plans can cost more import than today's non-compliant practice, typically because of split spells or night compensation; the experiments report that honestly rather than hiding it.
+
 ## What-if engine (all real backend computations)
 cloud ramp (worst real midday ramp day of 2025 from ERA5) · heat wave (hottest 2025 day + offset) · DT failure (pumps re-tapped to neighbours) · feeder outage · everyone switches on (participation 1.0) · impossible case (outage + heat: must return INFEASIBLE) · farmer slot request (contrastive re-solve).
 
