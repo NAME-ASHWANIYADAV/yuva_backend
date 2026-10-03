@@ -45,7 +45,8 @@ Every statement we make about SUNFLOW, with its label. **PUBLIC** = read from a 
 | Two-spell patterns that also use night compensation are enumerated on a 30-min lattice and, by default, only at the 2 h cap; the feasibility rung enumerates every allowed value. Feasibility is exact; optimality is over the enumerated pattern set | limitation | `patterns.py::enumerate_patterns`, `SolveOptions.split_night_options` |
 | Night-compensation hours are counted as 100 % grid import in every metric and cost, so a plan cannot look cheaper by moving supply to night | design | `truth_engine.simulate(night_comp=…)`, `fallback.economic_cost_inr` |
 | If the published timetable itself passes verification and is not more expensive than the certified plan under expected conditions, the timetable is issued unchanged (status CERTIFIED, rung `baseline_guard`) | design | `fallback.certify` |
-| A scenario that declares a higher participation than the verifier's P90 default is verified at the higher value (full-participation stress is verified at 1.0) | design | `truth_engine.simulate` |
+| Planner and verifier use the same participation: robust planning plans at max(scenario participation, P90 default) and the verifier replays at that value (full-participation stress is planned and verified at 1.0) | design (a 0.74-vs-0.9 mismatch was found and fixed while timing the sweep) | `optimization/inputs.py`, `truth_engine.simulate` |
+| Any certification finishes within a 120 s budget or returns the published timetable with an alert | design | `fallback.certify(time_budget_s=120)` |
 | An independent verifier (no import of optimiser code) replays every plan with the nonlinear thermal model under P90 participation, ×1.3 thermal constants, +3 °C ambient and P10 solar, and checks every rule | design | `verification/verifier.py`; `test_verifier_catches_*` |
 | If no plan is certified, the published MSEDCL timetable is returned with an alert and the verifier's report on it; the system therefore cannot do worse than today's practice *within the model* | design (proved by tests) | `test_certify_falls_back_on_solver_error`, `test_certify_reports_infeasible_with_conflicts` |
 | An intentionally impossible scenario returns INFEASIBLE with a list of which single rule family would restore feasibility; no plan is fabricated | design (proved by test) | `test_impossible_is_reported_not_faked` |
@@ -80,6 +81,6 @@ Paired per-scenario delta (sunflow_full − published timetable): import -80 kWh
 
 Distributions over scenarios, MODELLED on the synthetic Lamjana feeder with real weather; the published-timetable row is the same scenarios replayed with MSEDCL's Annexure-A slots (its verify-ok % shows how often today's practice would pass the pessimistic check). Import includes night-compensation energy. No single headline percentage is claimed.
 
-Safety sweep: `results/safety/sweep.json` not found (run `scripts/safety_sweep.py`).
+**Safety sweep** (`results/safety/sweep.json`): 1000 seeded random scenarios (seed 7; participation 0.5–1.0, thermal ±30 %, ambient −2…+6 °C, random DT failures and feeder outages, random irrigation needs); status counts `{'CERTIFIED': 504, 'CERTIFIED_WITH_RELAXATION': 256, 'INFEASIBLE': 228, 'FALLBACK_BASELINE': 12}`; certified plans with verifier violations: **0**; median solve 2.0 s, P90 23.4 s; wall time 3,366 s.
 
 <!-- generated-results:end -->

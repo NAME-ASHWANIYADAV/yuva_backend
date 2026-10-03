@@ -99,7 +99,10 @@ def attribute_conflict(cfg: SunflowConfig, scenario: Scenario, weights: Weights,
 
 
 def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: Optional[SolveOptions] = None,
-            settings: Optional[VerifySettings] = None, baseline: Optional[Plan] = None, max_tightenings: int = 2) -> Certified:
+            settings: Optional[VerifySettings] = None, baseline: Optional[Plan] = None, max_tightenings: int = 2,
+            time_budget_s: float = 120.0) -> Certified:
+    import time as _time
+    t_start = _time.time()
     base = options or SolveOptions()
     settings = settings or VerifySettings.from_config(cfg)
     ladder: List[dict] = []
@@ -124,10 +127,15 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
                              alert="Published timetable is already as cheap as any certified plan today; no change issued.")
         return cert
 
+    over_budget = False
     for i, rung in enumerate(_rungs(base)):
         opts: SolveOptions = rung["opts"]
         margin = opts.thermal_margin_c if opts.thermal_margin_c is not None else weights.thermal_margin_c
         for k in range(max_tightenings + 1):
+            if _time.time() - t_start > time_budget_s:
+                over_budget = True
+                log.warning(f"certification time budget of {time_budget_s:.0f} s exhausted at rung {rung['name']} tightening {k}")
+                break
             o = replace(opts, thermal_margin_c=margin + 4.0 * k)
             res = solve_plan(build_inputs(cfg, scenario, weights, o))
             last_solve = res
@@ -187,9 +195,13 @@ def certify(cfg: SunflowConfig, scenario: Scenario, weights: Weights, options: O
             if "hot_spot" not in rep.kinds():
                 log.warning(f"verification failed on non-thermal rules {rep.kinds()}: model/verifier mismatch, next rung")
                 break
+        if over_budget:
+            break
     rep = verify(bl, scenario, cfg, settings)
     conflicts: List[dict] = []
-    if any_solver_problem:
+    if over_budget:
+        status, alert = FALLBACK_BASELINE, f"Certification did not finish within {time_budget_s:.0f} s; published timetable issued with alert."
+    elif any_solver_problem:
         status, alert = FALLBACK_BASELINE, "Solver could not find a plan or prove infeasibility within the time limit; published timetable issued with alert."
     elif last_solve is not None and last_solve.plan is None:
         conflicts = attribute_conflict(cfg, scenario, weights, base)

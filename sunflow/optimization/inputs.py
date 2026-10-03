@@ -112,8 +112,14 @@ def build_inputs(cfg: SunflowConfig, scenario: Scenario, weights: Weights, optio
     # Robust planning: constraints are built under the same pessimistic assumptions the verifier will use
     # (P90 participation, upper thermal band, ambient offset), compounded with any scenario perturbation.
     v = cfg.verification
-    p_def = options.participation if options.participation is not None else (
-        scenario.participation if scenario.participation is not None else v.participation)
+    if options.participation is not None:
+        p_def = options.participation
+    elif options.robust:
+        # robust planning: the verifier replays at max(scenario participation, P90 default); plan at the same value
+        p_def = max(v.participation, scenario.participation if scenario.participation is not None else 0.0)
+    else:
+        # non-robust (ablation) planning uses the scenario's expected participation only
+        p_def = scenario.participation if scenario.participation is not None else cfg.participation.default
     p_def = float(min(max(p_def, 0.0), 1.0))
     p_surge = float(max(cfg.participation.surge_level, p_def))
 

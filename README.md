@@ -32,6 +32,8 @@ Demo sequence: [DEMO_SCRIPT.md](DEMO_SCRIPT.md). Data provenance: [DATA_SOURCES.
 ## Baseline and the "never worse than today" mechanism
 Baseline = MSEDCL's published Annexure-A slots for Lamjana (PT-1: Kharosa 09:30–17:30; PT-2: Jawali 09:00–17:00, Lamjana II 07:30–15:30, Chalburga 08:30–16:30), replayed through the same simulation under the same scenario. `certify()` solves, verifies, tightens on model mismatch, relaxes only what the circular allows (two spells, night compensation, deferred irrigation) and otherwise returns the published timetable with an alert and the verifier's report on it. Status values: `CERTIFIED`, `CERTIFIED_AFTER_TIGHTENING`, `CERTIFIED_WITH_RELAXATION`, `FALLBACK_BASELINE`, `INFEASIBLE` (with conflict attribution: which single rule family, when relaxed, restores feasibility).
 
+Measured (this machine, `scripts/safety_sweep.py --n 1000`): over 1,000 seeded random stress scenarios (participation 0.5–1.0, thermal constants ±30 %, ambient −2 to +6 °C, random DT failures and feeder outages), 760 plans were certified with **zero** verifier violations, 228 scenarios were reported INFEASIBLE with conflict attribution (no plan fabricated), and 12 fell back to the published timetable within the 120 s budget; median certification 2.0 s, P90 23 s. Details in [CLAIMS.md](CLAIMS.md).
+
 ## What-if engine (all real backend computations)
 cloud ramp (worst real midday ramp day of 2025 from ERA5) · heat wave (hottest 2025 day + offset) · DT failure (pumps re-tapped to neighbours) · feeder outage · everyone switches on (participation 1.0) · impossible case (outage + heat: must return INFEASIBLE) · farmer slot request (contrastive re-solve).
 

@@ -41,7 +41,12 @@ For UI development instead: `cd frontend && npm run dev` (proxies /api to port 8
 ```bash
 python -m pytest -q                       # unit + integration (~10 min, many MILP solves; 65 tests)
 set SUNFLOW_SWEEP_N=1000 && python -m pytest tests/test_safety_sweep.py -q   # full property sweep via pytest (slow)
-python scripts/safety_sweep.py --n 1000   # same sweep as a script; writes results/safety/sweep.json
+python scripts/safety_sweep.py --n 1000 --time-limit 15   # same sweep as a script; writes results/safety/sweep.json (about 90 min single-process)
+```
+Faster on a multi-core machine: one process per shard, then merge (scenario i always maps to the same day and seed):
+```bash
+for /l %k in (0,1,7) do start /b python scripts/safety_sweep.py --n 1000 --time-limit 15 --shard %k --shards 8
+python scripts/safety_sweep.py --shards 8 --merge
 ```
 
 ## 8. Run experiments and ablations (writes results/experiments/; about 45 min on a laptop)
